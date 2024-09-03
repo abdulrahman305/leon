@@ -77,7 +77,7 @@ jobs:
           echo "TCP_SERVER_VERSION=$(python -c "from version import __version__; print(__version__)")" >> $GITHUB_ENV
 
       - name: Download TCP server
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           path: tcp_server/dist
 
