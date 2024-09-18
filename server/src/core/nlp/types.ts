@@ -1,5 +1,6 @@
 import type { ShortLanguageCode } from '@/types'
 import type { BrainProcessResult } from '@/core/brain/types'
+import { SkillConfigSchema } from '@/schemas/skill-schemas'
 
 /**
  * NLP types
@@ -85,6 +86,7 @@ export interface NLUResult {
   resolvers: NLUResolver[]
   slots: NLUSlots
   utterance: NLPUtterance
+  newUtterance: NLPUtterance
   skillConfigPath: string
   answers: { answer: string }[]
   sentiment: {
@@ -92,6 +94,7 @@ export interface NLUResult {
     score?: NLPJSProcessResult['sentiment']['score']
   }
   classification: NLUClassification
+  actionConfig: SkillConfigSchema['actions'][NLPAction] | null
 }
 
 export type NLUSlots = Record<string, NLUSlot>
@@ -123,9 +126,18 @@ export const BUILT_IN_ENTITY_TYPES = [
   'temperature'
 ] as const
 
+export type NERDurationUnit =
+  | 'seconds'
+  | 'minutes'
+  | 'hours'
+  | 'days'
+  | 'weeks'
+  | 'months'
+  | 'years'
+
 export type BuiltInEntityType = (typeof BUILT_IN_ENTITY_TYPES)[number]
 
-export const CUSTOM_ENTITY_TYPES = ['regex', 'trim', 'enum'] as const
+export const CUSTOM_ENTITY_TYPES = ['regex', 'trim', 'enum', 'llm'] as const
 
 export type CustomEntityType = (typeof CUSTOM_ENTITY_TYPES)[number]
 
@@ -291,8 +303,8 @@ export type BuiltInDurationEntity = BuiltInEntity<
     values: {
       timex: string
       type: string
-      Mod?: 'before' | 'after'
       value: string
+      unit: NERDurationUnit
     }[]
   }
 >

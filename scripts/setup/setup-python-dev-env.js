@@ -9,7 +9,7 @@ import {
   FR_SPACY_MODEL_NAME,
   FR_SPACY_MODEL_VERSION,
   PYTHON_BRIDGE_SRC_PATH,
-  TCP_SERVER_SRC_PATH
+  PYTHON_TCP_SERVER_SRC_PATH
 } from '@/constants'
 import { CPUArchitectures, OSTypes } from '@/types'
 import { LogHelper } from '@/helpers/log-helper'
@@ -53,9 +53,9 @@ SETUP_TARGETS.set('python-bridge', {
 })
 SETUP_TARGETS.set('tcp-server', {
   name: 'TCP server',
-  pipfilePath: path.join(TCP_SERVER_SRC_PATH, 'Pipfile'),
-  dotVenvPath: path.join(TCP_SERVER_SRC_PATH, '.venv'),
-  dotProjectPath: path.join(TCP_SERVER_SRC_PATH, '.venv', '.project')
+  pipfilePath: path.join(PYTHON_TCP_SERVER_SRC_PATH, 'Pipfile'),
+  dotVenvPath: path.join(PYTHON_TCP_SERVER_SRC_PATH, '.venv'),
+  dotProjectPath: path.join(PYTHON_TCP_SERVER_SRC_PATH, '.venv', '.project')
 })
 
 SPACY_MODELS.set('en', {
@@ -130,8 +130,48 @@ SPACY_MODELS.set('fr', {
   const pipfileMtime = fs.statSync(pipfilePath).mtime
   const hasDotVenv = fs.existsSync(dotVenvPath)
   const { type: osType, cpuArchitecture } = SystemHelper.getInformation()
+  /**
+   * Install PyTorch with CUDA support
+   * as it is required by the latest NVIDIA drivers for CUDA runtime APIs.
+   * PyTorch will automatically download nvidia-* packages and bundle them.
+   *
+   * It is important to specify the "--ignore-installed" flag to make sure the
+   * "~/.pyenv/versions/3.11.9/lib/python3.11/site-packages" is not used in case
+   * NVIDIA deps are already installed. Otherwise, it won't install it in our
+   * TCP server .venv as it is already installed (satisfied) in
+   * the path mentioned above
+   *
+   * @see https://github.com/pytorch/pytorch/blob/main/RELEASE.md#release-compatibility-matrix
+   * @see https://pytorch.org/get-started/locally/
+   * @see https://stackoverflow.com/a/76972265/1768162
+   * @see https://docs.nvidia.com/deeplearning/cudnn/latest/reference/support-matrix.html
+   */
+  const installPytorch = async () => {
+    const logInfo =
+      osType === OSTypes.MacOS
+        ? 'Installing PyTorch...'
+        : 'Installing PyTorch with CUDA support...'
+    LogHelper.info(logInfo)
+
+    try {
+      // There is no CUDA support on macOS
+      const commandToExecute =
+        osType === OSTypes.MacOS
+          ? 'pipenv run pip install --ignore-installed --force-reinstall torch==2.3.1'
+          : 'pipenv run pip install --ignore-installed --force-reinstall torch==2.3.1 --index-url https://download.pytorch.org/whl/cu121'
+
+      await command(commandToExecute, {
+        shell: true,
+        stdio: 'inherit'
+      })
+      LogHelper.success('PyTorch with CUDA support installed')
+    } catch (e) {
+      LogHelper.error(`Failed to install PyTorch with CUDA support: ${e}`)
+      process.exit(1)
+    }
+  }
   const installPythonPackages = async () => {
-    LogHelper.info(`Installing Python packages from ${pipfilePath}.lock...`)
+    LogHelper.info(`Installing Python packages from ${pipfilePath}...`)
 
     // Delete .venv directory to reset the development environment
     if (hasDotVenv) {
@@ -141,7 +181,7 @@ SPACY_MODELS.set('fr', {
     }
 
     try {
-      await command('pipenv install --verbose --site-packages', {
+      await command('pipenv install --verbose --skip-lock', {
         shell: true,
         stdio: 'inherit'
       })
@@ -177,15 +217,30 @@ SPACY_MODELS.set('fr', {
       }
 
       LogHelper.success('Python packages installed')
+
+      if (givenSetupTarget === 'tcp-server') {
+        await installPytorch()
+      }
     } catch (e) {
+      if (hasDotVenv) {
+        await fs.promises.rm(dotVenvPath, { recursive: true, force: true })
+        LogHelper.info(`Error occurred, so "${dotVenvPath}" was deleted`)
+      }
+
       LogHelper.error(`Failed to install Python packages: ${e}`)
+
+      if (osType === OSTypes.Linux || osType === OSTypes.MacOS) {
+        LogHelper.error(
+          'If the error is related to "PortAudio" not installed or found, you can install it by running: "sudo apt install portaudio19-dev" or "brew install portaudio". Then retry. PortAudio is required for the "pyaudio" package used to record audio'
+        )
+      }
 
       if (osType === OSTypes.Windows) {
         LogHelper.error(
           'Please check the error above. It might be related to Microsoft C++ Build Tools. If it is, you can check here: "https://stackoverflow.com/a/64262038/1768162" then restart your machine and retry'
         )
         LogHelper.error(
-          'If it is related to some hash mismatch, you can try by installing Pipenv 2022.7.24: pip install pipenv==2022.7.24'
+          'If it is related to some hash mismatch, you can try by installing Pipenv 2024.0.1: pip install pipenv==2024.0.1'
         )
       }
 

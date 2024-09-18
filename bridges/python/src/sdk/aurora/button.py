@@ -1,9 +1,6 @@
-from ..widget import Widget
+from ..widget_component import WidgetComponent
 
 
-# TODO: contains the button API. rendering engine <-> SDK
-
-
-class Button(Widget):
-    def __init__(self, options):
-        super().__init__(options)
+class Button(WidgetComponent[dict]):
+    def __init__(self, props: dict):
+        super().__init__(props)

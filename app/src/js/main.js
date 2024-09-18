@@ -1,10 +1,13 @@
 import axios from 'axios'
+import '@leon-ai/aurora/style.css'
 
-import Loader from './loader'
+window.leonInitStatusEvent = new EventTarget()
+
+import './init'
 import Client from './client'
-import Recorder from './recorder'
-import listener from './listener'
-import { onkeydowndocument, onkeydowninput } from './onkeydown'
+// import Recorder from './recorder'
+// import listener from './listener'
+import { onkeydownstartrecording, onkeydowninput } from './onkeydown'
 
 const config = {
   app: 'webapp',
@@ -19,29 +22,54 @@ const serverUrl =
     : `${config.server_host}:${config.server_port}`
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const loader = new Loader()
-
-  loader.start()
-
   try {
     const response = await axios.get(`${serverUrl}/api/v1/info`)
     const input = document.querySelector('#utterance')
     const mic = document.querySelector('#mic-button')
     const v = document.querySelector('#version small')
-    const client = new Client(config.app, serverUrl, input, response.data)
-    let rec = {}
-    let chunks = []
+    const infoButton = document.querySelector('#info')
+    const client = new Client(config.app, serverUrl, input)
+    // let rec = {}
+    // let chunks = []
 
-    v.innerHTML += client.info.version
+    window.leonConfigInfo = response.data
+    const infoKeys = [
+      'timeZone',
+      'telemetry',
+      'gpu',
+      'graphicsComputeAPI',
+      'totalVRAM',
+      'freeVRAM',
+      'usedVRAM',
+      'llm',
+      'shouldWarmUpLLMDuties',
+      'isLLMActionRecognitionEnabled',
+      'isLLMNLGEnabled',
+      'stt',
+      'tts',
+      'mood',
+      'version'
+    ]
+    const infoToDisplay = {}
+    infoKeys.forEach((key) => {
+      infoToDisplay[key] = window.leonConfigInfo[key]
+    })
 
-    client.init(loader)
+    v.textContent += window.leonConfigInfo.version
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    client.updateMood(window.leonConfigInfo.mood)
+    client.init()
+
+    infoButton.addEventListener('click', () => {
+      alert(JSON.stringify(infoToDisplay, null, 2))
+    })
+
+    /*if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices
         .getUserMedia({ audio: true })
         .then((stream) => {
           if (MediaRecorder) {
-            rec = new Recorder(stream, mic, client.info)
+            rec = new Recorder(stream, mic, window.leonConfigInfo)
             client.recorder = rec
 
             rec.ondataavailable((e) => {
@@ -49,7 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             })
 
             rec.onstart(() => {
-              /* */
+              /!* *!/
             })
 
             rec.onstop(() => {
@@ -106,18 +134,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error(
         'MediaDevices.getUserMedia() is not supported on your browser.'
       )
-    }
+    }*/
 
     document.addEventListener('keydown', (e) => {
-      onkeydowndocument(e, () => {
-        if (rec.enabled === false) {
+      onkeydownstartrecording(e, () => {
+        client.asrStartRecording()
+        /*if (rec.enabled === false) {
           input.value = ''
           rec.start()
           rec.enabled = true
         } else {
           rec.stop()
           rec.enabled = false
-        }
+        }*/
       })
     })
 
@@ -128,13 +157,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     mic.addEventListener('click', (e) => {
       e.preventDefault()
 
-      if (rec.enabled === false) {
+      client.asrStartRecording()
+
+      /*if (rec.enabled === false) {
         rec.start()
         rec.enabled = true
       } else {
         rec.stop()
         rec.enabled = false
-      }
+      }*/
     })
   } catch (e) {
     alert(`Error: ${e.message}; ${JSON.stringify(e.response?.data)}`)

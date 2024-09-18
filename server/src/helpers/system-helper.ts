@@ -1,5 +1,7 @@
 import os from 'node:os'
 
+import type { Llama } from 'node-llama-cpp'
+
 import { OSTypes, CPUArchitectures } from '@/types'
 
 enum OSNames {
@@ -7,6 +9,12 @@ enum OSNames {
   MacOS = 'macOS',
   Linux = 'Linux',
   Unknown = 'Unknown'
+}
+enum GraphicsComputeAPIs {
+  CPU = 'cpu',
+  CUDA = 'cuda',
+  Vulkan = 'vulkan',
+  Metal = 'metal'
 }
 export enum BinaryFolderNames {
   Linux64Bit = 'linux-x86_64', // Linux 64-bit (Intel)
@@ -104,7 +112,7 @@ export class SystemHelper {
   }
 
   /**
-   * Get the number of cores on your machine
+   * Get the number of cores on the machine
    * @example getNumberOfCPUCores() // 8
    */
   public static getNumberOfCPUCores(): number {
@@ -112,7 +120,7 @@ export class SystemHelper {
   }
 
   /**
-   * Get the total amount of memory (in GB) on your machine
+   * Get the total amount of memory (in GB) on the machine
    * @example getTotalRAM() // 4
    */
   public static getTotalRAM(): number {
@@ -120,7 +128,7 @@ export class SystemHelper {
   }
 
   /**
-   * Get the amount of free memory (in GB) on your machine
+   * Get the amount of free memory (in GB) on the machine
    * @example getFreeRAM() // 6
    */
   public static getFreeRAM(): number {
@@ -154,5 +162,127 @@ export class SystemHelper {
     const { username } = os.userInfo()
 
     return str.replace(new RegExp(username, 'g'), '{username}')
+  }
+
+  /**
+   * Check if the current OS is Windows
+   * @example isWindows() // false
+   */
+  public static isWindows(): boolean {
+    const { type } = this.getInformation()
+
+    return type === OSTypes.Windows
+  }
+
+  /**
+   * Check if the current OS is macOS
+   * @example isMacOS() // false
+   */
+  public static isMacOS(): boolean {
+    const { type } = this.getInformation()
+
+    return type === OSTypes.MacOS
+  }
+
+  /**
+   * Check if the current OS is Linux
+   * @example isLinux() // true
+   */
+  public static isLinux(): boolean {
+    const { type } = this.getInformation()
+
+    return type === OSTypes.Linux
+  }
+
+  /**
+   * Get the names of the GPU devices on the machine
+   * @example getGPUDeviceNames() // ['Apple M1 Pro']
+   */
+  public static async getGPUDeviceNames(llama?: Llama): Promise<string[]> {
+    const llamaAPI = llama ? llama : (await import('@/core')).LLM_MANAGER.llama
+
+    if (llamaAPI) {
+      return llamaAPI.getGpuDeviceNames()
+    }
+
+    return []
+  }
+
+  /**
+   * Check if the machine has a GPU
+   * @example hasGPU() // true
+   */
+  public static async hasGPU(llama?: Llama): Promise<boolean> {
+    const llamaAPI = llama ? llama : (await import('@/core')).LLM_MANAGER.llama
+
+    if (llamaAPI) {
+      return !!llamaAPI.gpu
+    }
+
+    return false
+  }
+
+  /**
+   * Get the graphics compute API used by the machine
+   * @example getGraphicsComputeAPI() // 'cuda'
+   */
+  public static async getGraphicsComputeAPI(
+    llama?: Llama
+  ): Promise<GraphicsComputeAPIs> {
+    const llamaAPI = llama ? llama : (await import('@/core')).LLM_MANAGER.llama
+
+    if (llamaAPI && llamaAPI.gpu) {
+      return llamaAPI.gpu as GraphicsComputeAPIs
+    }
+
+    return GraphicsComputeAPIs.CPU
+  }
+
+  /**
+   * Get the amount of used VRAM (in GB) on the machine
+   * @example getUsedVRAM() // 6.04
+   */
+  public static async getUsedVRAM(llama?: Llama): Promise<number> {
+    const llamaAPI = llama ? llama : (await import('@/core')).LLM_MANAGER.llama
+
+    if (llamaAPI) {
+      const vramState = await llamaAPI.getVramState()
+
+      return Number((vramState.used / (1_024 * 1_024 * 1_024)).toFixed(2))
+    }
+
+    return 0
+  }
+
+  /**
+   * Get the total amount of VRAM (in GB) on the machine
+   * @example getTotalVRAM() // 12
+   */
+  public static async getTotalVRAM(llama?: Llama): Promise<number> {
+    const llamaAPI = llama ? llama : (await import('@/core')).LLM_MANAGER.llama
+
+    if (llamaAPI) {
+      const vramState = await llamaAPI.getVramState()
+
+      return Number((vramState.total / (1_024 * 1_024 * 1_024)).toFixed(2))
+    }
+
+    return 0
+  }
+
+  /**
+   * Get the amount of free VRAM (in GB) on the machine
+   * @example getFreeVRAM() // 6
+   */
+  public static async getFreeVRAM(llama?: Llama): Promise<number> {
+    const llamaAPI = llama ? llama : (await import('@/core')).LLM_MANAGER.llama
+
+    if (llamaAPI) {
+      const vramState = await llamaAPI.getVramState()
+
+      return Number((vramState.free / (1_024 * 1_024 * 1_024)).toFixed(2))
+    }
+
+    return 0
   }
 }

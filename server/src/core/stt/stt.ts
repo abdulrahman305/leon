@@ -9,6 +9,7 @@ import { STTParserNames, STTProviders } from '@/core/stt/types'
 import { LogHelper } from '@/helpers/log-helper'
 
 const PROVIDERS_MAP = {
+  [STTProviders.Local]: STTParserNames.Local,
   [STTProviders.GoogleCloudSTT]: STTParserNames.GoogleCloudSTT,
   [STTProviders.WatsonSTT]: STTParserNames.WatsonSTT,
   [STTProviders.CoquiSTT]: STTParserNames.CoquiSTT
@@ -17,7 +18,7 @@ const PROVIDERS_MAP = {
 export default class STT {
   private static instance: STT
 
-  private parser: STTParser = undefined
+  private _parser: STTParser = undefined
 
   constructor() {
     if (!STT.instance) {
@@ -28,8 +29,12 @@ export default class STT {
     }
   }
 
+  public get parser(): STTParser {
+    return this._parser
+  }
+
   public get isParserReady(): boolean {
-    return !!this.parser
+    return !!this._parser
   }
 
   /**
@@ -66,20 +71,25 @@ export default class STT {
       )
     }
 
-    // Dynamically attribute the parser
-    const { default: parser } = await import(
-      path.join(
-        __dirname,
-        'parsers',
-        PROVIDERS_MAP[STT_PROVIDER as STTProviders]
+    try {
+      // Dynamically attribute the parser
+      const { default: parser } = await import(
+        path.join(
+          __dirname,
+          'parsers',
+          PROVIDERS_MAP[STT_PROVIDER as STTProviders]
+        )
       )
-    )
-    this.parser = new parser() as STTParser
+      this._parser = new parser() as STTParser
 
-    LogHelper.title('STT')
-    LogHelper.success('STT initialized')
+      LogHelper.title('STT')
+      LogHelper.success('STT initialized')
 
-    return true
+      return true
+    } catch (e) {
+      LogHelper.error(`The STT provider failed to initialize: ${e}`)
+      process.exit(1)
+    }
   }
 
   /**
@@ -95,7 +105,9 @@ export default class STT {
     }
 
     const buffer = fs.readFileSync(audioFilePath)
-    const transcript = await this.parser?.parse(buffer)
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
+    const transcript = await this._parser?.parse(buffer)
 
     if (transcript && transcript !== '') {
       // Forward the string to the client

@@ -1,24 +1,25 @@
 import Net from 'node:net'
 import { EventEmitter } from 'node:events'
 
-import { IS_PRODUCTION_ENV } from '@/constants'
+import { IS_PRODUCTION_ENV, STT_PROVIDER } from '@/constants'
+import { STT } from '@/core'
 import { OSTypes } from '@/types'
 import { LogHelper } from '@/helpers/log-helper'
 import { SystemHelper } from '@/helpers/system-helper'
+import { STTProviders } from '@/core/stt/types'
 
 // Time interval between each try (in ms)
 const INTERVAL = IS_PRODUCTION_ENV ? 3000 : 500
 // Number of retries to connect to the TCP server
 const RETRIES_NB = IS_PRODUCTION_ENV ? 8 : 30
 
-interface ChunkData {
+export interface ChunkData {
   topic: string
-  data: unknown
+  data: Record<string, unknown>
 }
+type TCPClientName = 'Python'
 
 export default class TCPClient {
-  private static instance: TCPClient
-
   private reconnectCounter = 0
   private tcpSocket = new Net.Socket()
   private _isConnected = false
@@ -34,23 +35,21 @@ export default class TCPClient {
   }
 
   constructor(
+    private readonly name: TCPClientName,
     private readonly host: string,
     private readonly port: number
   ) {
-    if (!TCPClient.instance) {
-      LogHelper.title('TCP Client')
-      LogHelper.success('New instance')
+    LogHelper.title(`${name} TCP Client`)
+    LogHelper.success('New instance')
 
-      TCPClient.instance = this
-    }
-
+    this.name = name
     this.host = host
     this.port = port
 
     this.tcpSocket.on('connect', () => {
-      LogHelper.title('TCP Client')
+      LogHelper.title(`${this.name} TCP Client`)
       LogHelper.success(
-        `Connected to the TCP server tcp://${this.host}:${this.port}`
+        `Connected to the ${this.name} TCP server at tcp://${this.host}:${this.port}`
       )
 
       this.reconnectCounter = 0
@@ -59,15 +58,36 @@ export default class TCPClient {
     })
 
     this.tcpSocket.on('data', (chunk: ChunkData) => {
-      LogHelper.title('TCP Client')
+      LogHelper.title(`${this.name} TCP Client`)
       LogHelper.info(`Received data: ${String(chunk)}`)
 
-      const data = JSON.parse(String(chunk))
-      this.ee.emit(data.topic, data.data)
+      const strChunk = String(chunk)
+
+      /**
+       * If the topic is related to ASR, then parse the data manually
+       * in the local STT parser
+       */
+      if (strChunk.includes('"topic": "asr-')) {
+        if (STT_PROVIDER === STTProviders.Local) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          STT.parser?.parse(strChunk)
+        }
+      } else {
+        try {
+          const data = JSON.parse(strChunk)
+
+          this.ee.emit(data.topic, data.data)
+        } catch (e) {
+          LogHelper.title(`${this.name} TCP Client`)
+          LogHelper.error(`Failed to parse the data: ${e}`)
+          LogHelper.error(`Received data: ${String(chunk)}`)
+        }
+      }
     })
 
     this.tcpSocket.on('error', (err: NodeJS.ErrnoException) => {
-      LogHelper.title('TCP Client')
+      LogHelper.title(`${this.name} TCP Client`)
 
       if (err.code === 'ECONNREFUSED') {
         this.reconnectCounter += 1
@@ -75,17 +95,17 @@ export default class TCPClient {
         const { type: osType } = SystemHelper.getInformation()
 
         if (this.reconnectCounter >= RETRIES_NB) {
-          LogHelper.error('Failed to connect to the TCP server')
+          LogHelper.error(`Failed to connect to the ${this.name} TCP server`)
           this.tcpSocket.end()
         }
 
         if (this.reconnectCounter >= 1) {
-          LogHelper.info('Trying to connect to the TCP server...')
+          LogHelper.info(`Trying to connect to the ${this.name} TCP server...`)
 
           if (this.reconnectCounter >= 5) {
             if (osType === OSTypes.MacOS) {
               LogHelper.warning(
-                'The cold start of the TCP server can take a few more seconds on macOS. It should be a one-time thing, no worries'
+                `The cold start of the ${this.name} TCP server can take a few more seconds on macOS. It should be a one-time thing, no worries`
               )
             }
           }
@@ -95,15 +115,17 @@ export default class TCPClient {
           }, INTERVAL * this.reconnectCounter)
         }
       } else {
-        LogHelper.error(`Failed to connect to the TCP server: ${err}`)
+        LogHelper.error(
+          `Failed to connect to the ${this.name} TCP server: ${err}`
+        )
       }
 
       this._isConnected = false
     })
 
     this.tcpSocket.on('end', () => {
-      LogHelper.title('TCP Client')
-      LogHelper.success('Disconnected from the TCP server')
+      LogHelper.title(`${this.name} TCP Client`)
+      LogHelper.success(`Disconnected from the ${this.name} TCP server`)
 
       this._isConnected = false
     })

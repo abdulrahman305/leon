@@ -20,6 +20,7 @@ interface ConversationContext {
   isInActionLoop: boolean
   nextAction: NLPAction | null
   originalUtterance: NLPUtterance | null
+  newUtterance: NLPUtterance | null
   activatedAt: number
   skillConfigPath: string
   actionName: NLPAction
@@ -39,6 +40,7 @@ export const DEFAULT_ACTIVE_CONTEXT = {
   isInActionLoop: false,
   nextAction: null,
   originalUtterance: null,
+  newUtterance: null,
   activatedAt: 0,
   skillConfigPath: '',
   actionName: '',
@@ -195,9 +197,11 @@ export default class Conversation {
       }
 
       // Match the slot with the submitted entity and ensure the slot hasn't been filled yet
-      const [foundEntity] = entities.filter(
+      const foundEntities = entities.filter(
         ({ entity }) => entity === slotEntity && !slotObj.isFilled
       )
+      // get the last found entity
+      const foundEntity = foundEntities[foundEntities.length - 1]
       const pickedQuestion = questions[
         Math.floor(Math.random() * questions.length)
       ] as string

@@ -4,7 +4,7 @@ import fs from 'node:fs'
 
 import type { ShortLanguageCode } from '@/types'
 import type { TTSSynthesizer } from '@/core/tts/types'
-import { SOCKET_SERVER } from '@/core'
+import { BRAIN, SOCKET_SERVER } from '@/core'
 import { TTS_PROVIDER, VOICE_CONFIG_PATH } from '@/constants'
 import { TTSSynthesizers, TTSProviders } from '@/core/tts/types'
 import { LogHelper } from '@/helpers/log-helper'
@@ -16,6 +16,7 @@ interface Speech {
 }
 
 const PROVIDERS_MAP = {
+  [TTSProviders.Local]: TTSSynthesizers.Local,
   [TTSProviders.GoogleCloudTTS]: TTSSynthesizers.GoogleCloudTTS,
   [TTSProviders.WatsonTTS]: TTSSynthesizers.WatsonTTS,
   [TTSProviders.AmazonPolly]: TTSSynthesizers.AmazonPolly,
@@ -26,7 +27,7 @@ export default class TTS {
   private static instance: TTS
 
   private synthesizer: TTSSynthesizer = undefined
-  private speeches: Speech[] = []
+  public speeches: Speech[] = []
 
   public lang: ShortLanguageCode = 'en'
   public em = new events.EventEmitter()
@@ -76,24 +77,29 @@ export default class TTS {
       )
     }
 
-    // Dynamically attribute the synthesizer
-    const { default: synthesizer } = await import(
-      path.join(
-        __dirname,
-        'synthesizers',
-        PROVIDERS_MAP[TTS_PROVIDER as TTSProviders]
+    try {
+      // Dynamically attribute the synthesizer
+      const { default: synthesizer } = await import(
+        path.join(
+          __dirname,
+          'synthesizers',
+          PROVIDERS_MAP[TTS_PROVIDER as TTSProviders]
+        )
       )
-    )
-    this.synthesizer = new synthesizer(
-      LangHelper.getLongCode(this.lang)
-    ) as TTSSynthesizer
+      this.synthesizer = new synthesizer(
+        LangHelper.getLongCode(this.lang)
+      ) as TTSSynthesizer
 
-    this.onSaved()
+      this.onSaved()
 
-    LogHelper.title('TTS')
-    LogHelper.success('TTS initialized')
+      LogHelper.title('TTS')
+      LogHelper.success('TTS initialized')
 
-    return true
+      return true
+    } catch (e) {
+      LogHelper.error(`The TTS provider failed to initialize: ${e}`)
+      process.exit(1)
+    }
   }
 
   /**
@@ -102,7 +108,14 @@ export default class TTS {
    */
   private async forward(speech: Speech): Promise<void> {
     if (this.synthesizer) {
+      BRAIN.setIsTalkingWithVoice(true)
+
       const result = await this.synthesizer.synthesize(speech.text)
+
+      // Support custom TTS providers such as the local synthesizer
+      if (result?.audioFilePath === '') {
+        return
+      }
 
       if (!result) {
         LogHelper.error(
@@ -120,7 +133,7 @@ export default class TTS {
             duration
           },
           (confirmation: string) => {
-            if (confirmation === 'audio-received') {
+            if (confirmation === 'audio-received' && audioFilePath !== '') {
               fs.unlinkSync(audioFilePath)
             }
           }
@@ -139,6 +152,8 @@ export default class TTS {
     this.em.on('saved', (duration) => {
       setTimeout(async () => {
         this.speeches.shift()
+
+        BRAIN.setIsTalkingWithVoice(false)
 
         if (this.speeches[0]) {
           await this.forward(this.speeches[0])

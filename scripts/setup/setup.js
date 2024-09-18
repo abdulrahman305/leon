@@ -1,3 +1,4 @@
+import { IS_GITHUB_ACTIONS } from '@/constants'
 import { LoaderHelper } from '@/helpers/loader-helper'
 import { LogHelper } from '@/helpers/log-helper'
 
@@ -8,7 +9,9 @@ import generateJSONSchemas from '../generate/generate-json-schemas'
 import setupDotenv from './setup-dotenv'
 import setupCore from './setup-core'
 import setupSkills from './setup-skills/setup-skills'
+import setupLLM from './setup-llm'
 import setupBinaries from './setup-binaries'
+import setupTCPServerModels from './setup-tcp-server-models'
 import createInstanceID from './create-instance-id'
 
 // Do not load ".env" file because it is not created yet
@@ -23,7 +26,14 @@ import createInstanceID from './create-instance-id'
     await setupCore()
     await setupSkills()
     LoaderHelper.stop()
+    if (!IS_GITHUB_ACTIONS) {
+      await setupLLM()
+    } else {
+      LogHelper.info('Skipping LLM setup because it is running in CI')
+    }
+
     await setupBinaries()
+    await setupTCPServerModels()
     await generateHTTPAPIKey()
     await generateJSONSchemas()
     LoaderHelper.start()

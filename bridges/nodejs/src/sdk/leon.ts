@@ -5,6 +5,8 @@ import type {
   AnswerConfig
 } from '@sdk/types'
 import { INTENT_OBJECT, SKILL_CONFIG } from '@bridge/constants'
+import { WidgetWrapper } from '@sdk/aurora'
+import { SUPPORTED_WIDGET_EVENTS } from '@sdk/widget-component'
 
 class Leon {
   private static instance: Leon
@@ -42,18 +44,26 @@ class Leon {
 
       if (data != null) {
         for (const key in data) {
-          // In case the answer needs speech and text differentiation
-          if (typeof answer !== 'string' && answer.text) {
-            answer.text = answer.text.replaceAll(`%${key}%`, String(data[key]))
-            answer.speech = answer.speech.replaceAll(
-              `%${key}%`,
-              String(data[key])
-            )
-          } else {
+          if (typeof answer === 'string') {
             answer = (answer as string).replaceAll(
               `%${key}%`,
               String(data[key])
             )
+          } else {
+            // In case the answer needs speech and text differentiation
+
+            if (answer.text) {
+              answer.text = answer.text.replaceAll(
+                `%${key}%`,
+                String(data[key])
+              )
+            }
+            if (answer.speech) {
+              answer.speech = answer.speech.replaceAll(
+                `%${key}%`,
+                String(data[key])
+              )
+            }
           }
         }
       }
@@ -62,21 +72,26 @@ class Leon {
         const { variables } = SKILL_CONFIG
 
         for (const key in variables) {
-          // In case the answer needs speech and text differentiation
-          if (typeof answer !== 'string' && answer.text) {
-            answer.text = answer.text.replaceAll(
-              `%${key}%`,
-              String(variables[key])
-            )
-            answer.speech = answer.speech.replaceAll(
-              `%${key}%`,
-              String(variables[key])
-            )
-          } else {
+          if (typeof answer === 'string') {
             answer = (answer as string).replaceAll(
               `%${key}%`,
               String(variables[key])
             )
+          } else {
+            // In case the answer needs speech and text differentiation
+
+            if (answer.text) {
+              answer.text = answer.text.replaceAll(
+                `%${key}%`,
+                String(variables[key])
+              )
+            }
+            if (answer.speech) {
+              answer.speech = answer.speech.replaceAll(
+                `%${key}%`,
+                String(variables[key])
+              )
+            }
           }
         }
       }
@@ -114,7 +129,17 @@ class Leon {
       }
 
       if (answerInput.widget) {
-        answerObject.output.widget = answerInput.widget
+        answerObject.output.widget = {
+          actionName: `${INTENT_OBJECT.domain}:${INTENT_OBJECT.skill}:${INTENT_OBJECT.action}`,
+          widget: answerInput.widget.widget,
+          id: answerInput.widget.id,
+          onFetch: answerInput.widget.onFetch ?? null,
+          componentTree: new WidgetWrapper({
+            ...answerInput.widget.wrapperProps,
+            children: [answerInput.widget.render()]
+          }),
+          supportedEvents: SUPPORTED_WIDGET_EVENTS
+        }
       }
 
       // "Temporize" for the data buffer output on the core

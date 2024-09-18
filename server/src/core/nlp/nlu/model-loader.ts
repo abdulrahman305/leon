@@ -1,13 +1,15 @@
 import fs from 'node:fs'
-import path from 'node:path'
 
 import { containerBootstrap } from '@nlpjs/core-loader'
 import { Nlp } from '@nlpjs/nlp'
 import { BuiltinMicrosoft } from '@nlpjs/builtin-microsoft'
 import { LangAll } from '@nlpjs/lang-all'
 
-import { MODELS_PATH } from '@/constants'
-import { NER } from '@/core'
+import {
+  MAIN_NLP_MODEL_PATH,
+  GLOBAL_RESOLVERS_NLP_MODEL_PATH,
+  SKILLS_RESOLVERS_NLP_MODEL_PATH
+} from '@/constants'
 import { MICROSOFT_BUILT_IN_ENTITIES } from '@/core/nlp/nlu/ner'
 import { LogHelper } from '@/helpers/log-helper'
 
@@ -45,13 +47,9 @@ export default class ModelLoader {
    */
   public loadNLPModels(): Promise<[void, void, void]> {
     return Promise.all([
-      this.loadGlobalResolversModel(
-        path.join(MODELS_PATH, 'leon-global-resolvers-model.nlp')
-      ),
-      this.loadSkillsResolversModel(
-        path.join(MODELS_PATH, 'leon-skills-resolvers-model.nlp')
-      ),
-      this.loadMainModel(path.join(MODELS_PATH, 'leon-main-model.nlp'))
+      this.loadGlobalResolversModel(GLOBAL_RESOLVERS_NLP_MODEL_PATH),
+      this.loadSkillsResolversModel(SKILLS_RESOLVERS_NLP_MODEL_PATH),
+      this.loadMainModel(MAIN_NLP_MODEL_PATH)
     ])
   }
 
@@ -69,8 +67,6 @@ export default class ModelLoader {
           )
         )
       } else {
-        LogHelper.title('Model Loader')
-
         try {
           const container = await containerBootstrap()
 
@@ -79,9 +75,11 @@ export default class ModelLoader {
 
           this.globalResolversNLPContainer = container.get('nlp')
           const nluManager = container.get('nlu-manager')
-          nluManager.settings.spellCheck = true
+          // The spell checker will try to correct the words with the most probable distance, but it is not perfect
+          nluManager.settings.spellCheck = false
 
           await this.globalResolversNLPContainer.load(modelPath)
+          LogHelper.title('Model Loader')
           LogHelper.success('Global resolvers NLP model loaded')
 
           resolve()
@@ -119,7 +117,8 @@ export default class ModelLoader {
 
           this.skillsResolversNLPContainer = container.get('nlp')
           const nluManager = container.get('nlu-manager')
-          nluManager.settings.spellCheck = true
+          // The spell checker will try to correct the words with the most probable distance, but it is not perfect
+          nluManager.settings.spellCheck = false
 
           await this.skillsResolversNLPContainer.load(modelPath)
           LogHelper.success('Skills resolvers NLP model loaded')
@@ -166,12 +165,11 @@ export default class ModelLoader {
 
           this.mainNLPContainer = container.get('nlp')
           const nluManager = container.get('nlu-manager')
-          nluManager.settings.spellCheck = true
+          // The spell checker will try to correct the words with the most probable distance, but it is not perfect
+          nluManager.settings.spellCheck = false
 
           await this.mainNLPContainer.load(modelPath)
           LogHelper.success('Main NLP model loaded')
-
-          NER.manager = this.mainNLPContainer.ner
 
           resolve()
         } catch (e) {

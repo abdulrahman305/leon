@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 
+import type { APIOptions } from '@/core/http-server/http-server'
 import {
   LEON_VERSION,
   HAS_AFTER_SPEECH,
@@ -7,10 +8,13 @@ import {
   HAS_TTS,
   STT_PROVIDER,
   TTS_PROVIDER,
-  IS_TELEMETRY_ENABLED
+  IS_TELEMETRY_ENABLED,
+  LLM_PROVIDER
 } from '@/constants'
+import { LLM_MANAGER, PERSONA } from '@/core'
 import { LogHelper } from '@/helpers/log-helper'
-import type { APIOptions } from '@/core/http-server/http-server'
+import { DateHelper } from '@/helpers/date-helper'
+import { SystemHelper } from '@/helpers/system-helper'
 
 export const getInfo: FastifyPluginAsync<APIOptions> = async (
   fastify,
@@ -24,6 +28,20 @@ export const getInfo: FastifyPluginAsync<APIOptions> = async (
       const message = 'Information pulled.'
       LogHelper.success(message)
 
+      const [
+        gpuDeviceNames,
+        graphicsComputeAPI,
+        totalVRAM,
+        freeVRAM,
+        usedVRAM
+      ] = await Promise.all([
+        SystemHelper.getGPUDeviceNames(),
+        SystemHelper.getGraphicsComputeAPI(),
+        SystemHelper.getTotalVRAM(),
+        SystemHelper.getFreeVRAM(),
+        SystemHelper.getUsedVRAM()
+      ])
+
       reply.send({
         success: true,
         status: 200,
@@ -31,6 +49,20 @@ export const getInfo: FastifyPluginAsync<APIOptions> = async (
         message,
         after_speech: HAS_AFTER_SPEECH,
         telemetry: IS_TELEMETRY_ENABLED,
+        shouldWarmUpLLMDuties: LLM_MANAGER.shouldWarmUpLLMDuties,
+        isLLMActionRecognitionEnabled:
+          LLM_MANAGER.isLLMActionRecognitionEnabled,
+        isLLMNLGEnabled: LLM_MANAGER.isLLMNLGEnabled,
+        timeZone: DateHelper.getTimeZone(),
+        gpu: gpuDeviceNames[0],
+        graphicsComputeAPI,
+        totalVRAM,
+        freeVRAM,
+        usedVRAM,
+        llm: {
+          enabled: LLM_MANAGER.isLLMEnabled,
+          provider: LLM_PROVIDER
+        },
         stt: {
           enabled: HAS_STT,
           provider: STT_PROVIDER
@@ -38,6 +70,10 @@ export const getInfo: FastifyPluginAsync<APIOptions> = async (
         tts: {
           enabled: HAS_TTS,
           provider: TTS_PROVIDER
+        },
+        mood: {
+          type: PERSONA.mood.type,
+          emoji: PERSONA.mood.emoji
         },
         version: LEON_VERSION
       })

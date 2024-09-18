@@ -17,7 +17,7 @@
       "Sorry, I've got an error with the \"%skill_name%\" skill from the \"%domain_name%\" domain",
       "Sorry, the \"%skill_name%\" skill from the \"%domain_name%\" domain is broken"
     ],
-    "random_unknown_intents": [
+    "random_unknown_intents_legacy": [
       "Sorry, I still don't know this, but you can help me to understand by <a href=\"https://github.com/leon-ai/leon/blob/develop/.github/CONTRIBUTING.md\" target=\"_blank\">creating a pull request</a>",
       "Sorry, you should teach me this request. You can teach me by <a href=\"https://github.com/leon-ai/leon/blob/develop/.github/CONTRIBUTING.md\" target=\"_blank\">creating a pull request</a>",
       "Sorry, I cannot answer that. Let me answer you in the future by <a href=\"https://github.com/leon-ai/leon/blob/develop/.github/CONTRIBUTING.md\" target=\"_blank\">creating a pull request</a>",
@@ -54,6 +54,19 @@
       "Sure, let's change the topic",
       "Aah, you want to change the subject, sure",
       "Mmmh, as you wish, let's switch conversation"
+    ],
+    "llm_not_enabled": [
+      "Sorry, I need my large language model to fulfill this request, but it's not enabled",
+      "My large language model is not enabled, so I can't fulfill this request",
+      "I can't fulfill this request because my large language model is not enabled",
+      "Sorry, I need my large language model to answer this request, but it's not enabled",
+      "My large language model is not enabled, so I can't answer this request"
+    ],
+    "action_loop_stopped": [
+      "Sure, let me know if you need anything else",
+      "Alright, let me know what you need next",
+      "Okay, let me know what I can do for you next",
+      "Sure thing"
     ]
   }
 }

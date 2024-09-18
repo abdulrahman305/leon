@@ -14,6 +14,8 @@ import type {
   SkillAnswerConfigSchema
 } from '@/schemas/skill-schemas'
 import type { ShortLanguageCode } from '@/types'
+import type { WidgetWrapper } from '@sdk/aurora'
+import type { SUPPORTED_WIDGET_EVENTS } from '@sdk/widget-component'
 
 interface SkillCoreData {
   restart?: boolean
@@ -36,6 +38,10 @@ export interface SkillResult {
     core: SkillCoreData | undefined
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     options: Record<string, any>
+    widget?: {
+      componentTree: WidgetWrapper
+      supportedEvents: typeof SUPPORTED_WIDGET_EVENTS
+    }
   }
 }
 
@@ -51,6 +57,7 @@ export enum SkillActionTypes {
 export interface ActionParams {
   lang: ShortLanguageCode
   utterance: NLPUtterance
+  new_utterance: NLPUtterance
   current_entities: NEREntity[]
   entities: NEREntity[]
   current_resolvers: NLUResolver[]
@@ -85,7 +92,17 @@ export interface SkillAnswerOutput extends IntentObject {
     codes: string
     answer: SkillAnswerConfigSchema
     core?: SkillAnswerCoreData
-    widget?: unknown // TODO
+    widget?: {
+      actionName: string
+      widget: string
+      id: string
+      componentTree: WidgetWrapper
+      supportedEvents: typeof SUPPORTED_WIDGET_EVENTS
+      onFetch: {
+        widgetId?: string
+        actionName: string
+      } | null
+    }
   }
 }
 

@@ -1,16 +1,24 @@
 import type { DefaultEventsMap } from 'socket.io/dist/typed-events'
 import { Server as SocketIOServer, Socket } from 'socket.io'
+import axios from 'axios'
 
-import { LANG, HAS_STT, HAS_TTS, IS_DEVELOPMENT_ENV } from '@/constants'
+import {
+  LANG,
+  HAS_STT,
+  HAS_TTS,
+  IS_DEVELOPMENT_ENV,
+  API_VERSION
+} from '@/constants'
 import {
   HTTP_SERVER,
-  TCP_CLIENT,
+  PYTHON_TCP_CLIENT,
   ASR,
   STT,
   TTS,
   NLU,
   BRAIN,
-  MODEL_LOADER
+  MODEL_LOADER,
+  LLM_MANAGER
 } from '@/core'
 import { LogHelper } from '@/helpers/log-helper'
 import { LangHelper } from '@/helpers/lang-helper'
@@ -24,6 +32,15 @@ interface HotwordDataEvent {
 interface UtteranceDataEvent {
   client: string
   value: string
+}
+
+interface WidgetDataEvent {
+  method: {
+    methodName: string
+    methodParams: Record<string, string | number | undefined | unknown[]>
+  }
+  // Data returned from Aurora components
+  data: Record<string, string | number | undefined | unknown[]>
 }
 
 export default class SocketServer {
@@ -79,20 +96,41 @@ export default class SocketServer {
       this.socket = socket
 
       // Init
-      this.socket.on('init', (data: string) => {
+      this.socket.on('init', async (data: string) => {
         LogHelper.info(`Type: ${data}`)
         LogHelper.info(`Socket ID: ${this.socket?.id}`)
+
+        this.socket?.emit('init-client-core-server-handshake', 'success')
 
         // TODO
         // const provider = await addProvider(socket.id)
 
-        // Check whether the TCP client is connected to the TCP server
-        if (TCP_CLIENT.isConnected) {
+        // Check whether the Python TCP client is connected to the Python TCP server
+        if (PYTHON_TCP_CLIENT.isConnected) {
           this.socket?.emit('ready')
+          this.socket?.emit('init-tcp-server-boot', 'success')
         } else {
-          TCP_CLIENT.ee.on('connected', () => {
+          PYTHON_TCP_CLIENT.ee.on('connected', () => {
             this.socket?.emit('ready')
+            this.socket?.emit('init-tcp-server-boot', 'success')
           })
+        }
+
+        if (LLM_MANAGER.isLLMEnabled) {
+          this.socket?.emit('init-llm', 'success')
+        }
+
+        if (LLM_MANAGER.shouldWarmUpLLMDuties) {
+          if (!LLM_MANAGER.areLLMDutiesWarmedUp) {
+            const interval = setInterval(() => {
+              if (LLM_MANAGER.areLLMDutiesWarmedUp) {
+                clearInterval(interval)
+                this.socket?.emit('warmup-llm-duties', 'success')
+              }
+            }, 2_000)
+          } else {
+            this.socket?.emit('warmup-llm-duties', 'success')
+          }
         }
 
         if (data === 'hotword-node') {
@@ -115,6 +153,9 @@ export default class SocketServer {
             try {
               LogHelper.time('Utterance processed in')
 
+              // Always interrupt Leon's voice on answer
+              BRAIN.setIsTalkingWithVoice(false, { shouldInterrupt: true })
+
               BRAIN.isMuted = false
               const processedData = await NLU.process(utterance)
 
@@ -129,6 +170,11 @@ export default class SocketServer {
             }
           })
 
+          // Handle new local ASR engine recording
+          this.socket?.on('asr-start-record', () => {
+            PYTHON_TCP_CLIENT.emit('asr_start_recording', null)
+          })
+
           // Handle automatic speech recognition
           this.socket?.on('recognize', async (data: Buffer) => {
             try {
@@ -137,6 +183,44 @@ export default class SocketServer {
               LogHelper.error(
                 `ASR - Failed to encode audio blob to WAVE file: ${e}`
               )
+            }
+          })
+
+          // Listen for widget events
+          this.socket?.on('widget-event', async (event: WidgetDataEvent) => {
+            LogHelper.title('Socket')
+            LogHelper.info(`Widget event: ${JSON.stringify(event)}`)
+
+            this.socket?.emit('is-typing', true)
+
+            try {
+              const { method } = event
+
+              if (method.methodName === 'send_utterance') {
+                const utterance = method.methodParams['utterance']
+
+                if (method.methodParams['from'] === 'leon') {
+                  await BRAIN.talk(utterance as string, true)
+                } else {
+                  this.socket?.emit('widget-send-utterance', utterance)
+                }
+              } else if (method.methodName === 'run_skill_action') {
+                const { actionName, params } = method.methodParams
+
+                await axios.post(
+                  `${HTTP_SERVER.host}:${HTTP_SERVER.port}/api/${API_VERSION}/run-action`,
+                  {
+                    skill_action: actionName,
+                    action_params: params
+                  }
+                )
+              }
+            } catch (e) {
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-expect-error
+              LogHelper.error(`Failed to handle widget event: ${e.errors || e}`)
+            } finally {
+              this.socket?.emit('is-typing', false)
             }
           })
         }

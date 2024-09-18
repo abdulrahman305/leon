@@ -13,16 +13,20 @@ import getos from 'getos'
 
 import { LogHelper } from '@/helpers/log-helper'
 import { SystemHelper } from '@/helpers/system-helper'
+import { shouldIgnoreTCPServerError } from '@/utilities'
 import {
   MINIMUM_REQUIRED_RAM,
   LEON_VERSION,
   NODEJS_BRIDGE_BIN_PATH,
   PYTHON_BRIDGE_BIN_PATH,
-  TCP_SERVER_BIN_PATH,
-  TCP_SERVER_VERSION,
+  PYTHON_TCP_SERVER_BIN_PATH,
+  PYTHON_TCP_SERVER_VERSION,
   NODEJS_BRIDGE_VERSION,
   PYTHON_BRIDGE_VERSION,
-  INSTANCE_ID
+  INSTANCE_ID,
+  SKILLS_RESOLVERS_NLP_MODEL_PATH,
+  GLOBAL_RESOLVERS_NLP_MODEL_PATH,
+  MAIN_NLP_MODEL_PATH
 } from '@/constants'
 
 dotenv.config()
@@ -41,17 +45,12 @@ dotenv.config()
     const googleCloudPath = 'core/config/voice/google-cloud.json'
     const watsonSttPath = 'core/config/voice/watson-stt.json'
     const watsonTtsPath = 'core/config/voice/watson-tts.json'
-    const globalResolversNlpModelPath =
-      'core/data/models/leon-global-resolvers-model.nlp'
-    const skillsResolversNlpModelPath =
-      'core/data/models/leon-skills-resolvers-model.nlp'
-    const mainNlpModelPath = 'core/data/models/leon-main-model.nlp'
     const report = {
       can_run: { title: 'Run', type: 'error', v: true },
       can_run_skill: { title: 'Run skills', type: 'error', v: true },
       can_text: { title: 'Reply you by texting', type: 'error', v: true },
-      can_start_tcp_server: {
-        title: 'Start the TCP server',
+      can_start_python_tcp_server: {
+        title: 'Start the Python TCP server',
         type: 'error',
         v: true
       },
@@ -118,7 +117,7 @@ dotenv.config()
         output: null,
         error: null
       },
-      tcpServer: {
+      pythonTCPServer: {
         version: null,
         startTime: null,
         command: null,
@@ -286,51 +285,49 @@ dotenv.config()
     }
 
     /**
-     * TCP server startup checking
+     * Python TCP server startup checking
      */
 
-    LogHelper.success(`TCP server version: ${TCP_SERVER_VERSION}`)
-    reportDataInput.tcpServer.version = TCP_SERVER_VERSION
+    LogHelper.success(`Python TCP server version: ${PYTHON_TCP_SERVER_VERSION}`)
+    reportDataInput.pythonTCPServer.version = PYTHON_TCP_SERVER_VERSION
 
-    LogHelper.info('Starting the TCP server...')
+    LogHelper.info('Starting the Python TCP server...')
 
-    const tcpServerCommand = `${TCP_SERVER_BIN_PATH} en`
-    const tcpServerStart = Date.now()
-    const p = spawn(tcpServerCommand, { shell: true })
-    const ignoredWarnings = [
-      'UserWarning: Unable to retrieve source for @torch.jit._overload function'
-    ]
+    const pythonTCPServerCommand = `${PYTHON_TCP_SERVER_BIN_PATH} en`
+    const pythonTCPServerStart = Date.now()
+    const p = spawn(pythonTCPServerCommand, { shell: true })
 
-    LogHelper.info(tcpServerCommand)
-    reportDataInput.tcpServer.command = tcpServerCommand
+    LogHelper.info(pythonTCPServerCommand)
+    reportDataInput.pythonTCPServer.command = pythonTCPServerCommand
 
     if (osInfo.platform === 'darwin') {
       LogHelper.info(
-        'For the first start, it may take a few minutes to cold start the TCP server on macOS. No worries it is a one-time thing'
+        'For the first start, it may take a few minutes to cold start the Python TCP server on macOS. No worries it is a one-time thing'
       )
     }
 
-    let tcpServerOutput = ''
+    let pythonTCPServerOutput = ''
 
     p.stdout.on('data', (data) => {
       const newData = data.toString()
-      tcpServerOutput += newData
+      pythonTCPServerOutput += newData
 
       if (newData?.toLowerCase().includes('waiting for')) {
         kill(p.pid)
-        LogHelper.success('The TCP server can successfully start')
+        LogHelper.success('The Python TCP server can successfully start')
       }
     })
 
     p.stderr.on('data', (data) => {
       const newData = data.toString()
+      const shouldIgnore = shouldIgnoreTCPServerError(newData)
 
       // Ignore given warnings on stderr output
-      if (!ignoredWarnings.some((w) => newData.includes(w))) {
-        tcpServerOutput += newData
-        report.can_start_tcp_server.v = false
-        reportDataInput.tcpServer.error = newData
-        LogHelper.error(`Cannot start the TCP server: ${newData}`)
+      if (!shouldIgnore) {
+        pythonTCPServerOutput += newData
+        report.can_start_python_tcp_server.v = false
+        reportDataInput.pythonTCPServer.error = newData
+        LogHelper.error(`Cannot start the Python TCP server: ${newData}`)
       }
     })
 
@@ -339,18 +336,20 @@ dotenv.config()
     setTimeout(() => {
       kill(p.pid)
 
-      const error = `The TCP server timed out after ${timeout}ms`
+      const error = `The Python TCP server timed out after ${timeout}ms`
       LogHelper.error(error)
-      reportDataInput.tcpServer.error = error
-      report.can_start_tcp_server.v = false
+      reportDataInput.pythonTCPServer.error = error
+      report.can_start_python_tcp_server.v = false
     }, timeout)
 
     p.stdout.on('end', async () => {
-      const tcpServerEnd = Date.now()
-      reportDataInput.tcpServer.output = tcpServerOutput
-      reportDataInput.tcpServer.startTime = `${tcpServerEnd - tcpServerStart}ms`
+      const pythonTCPServerEnd = Date.now()
+      reportDataInput.pythonTCPServer.output = pythonTCPServerOutput
+      reportDataInput.pythonTCPServer.startTime = `${
+        pythonTCPServerEnd - pythonTCPServerStart
+      }ms`
       LogHelper.info(
-        `TCP server startup time: ${reportDataInput.tcpServer.startTime}\n`
+        `Python TCP server startup time: ${reportDataInput.pythonTCPServer.startTime}\n`
       )
 
       /**
@@ -360,9 +359,10 @@ dotenv.config()
       LogHelper.info('Global resolvers NLP model state')
 
       if (
-        !fs.existsSync(globalResolversNlpModelPath) ||
-        !Object.keys(await fs.promises.readFile(globalResolversNlpModelPath))
-          .length
+        !fs.existsSync(GLOBAL_RESOLVERS_NLP_MODEL_PATH) ||
+        !Object.keys(
+          await fs.promises.readFile(GLOBAL_RESOLVERS_NLP_MODEL_PATH)
+        ).length
       ) {
         const state = 'Global resolvers NLP model not found or broken'
 
@@ -389,9 +389,10 @@ dotenv.config()
       LogHelper.info('Skills resolvers NLP model state')
 
       if (
-        !fs.existsSync(skillsResolversNlpModelPath) ||
-        !Object.keys(await fs.promises.readFile(skillsResolversNlpModelPath))
-          .length
+        !fs.existsSync(SKILLS_RESOLVERS_NLP_MODEL_PATH) ||
+        !Object.keys(
+          await fs.promises.readFile(SKILLS_RESOLVERS_NLP_MODEL_PATH)
+        ).length
       ) {
         const state = 'Skills resolvers NLP model not found or broken'
 
@@ -418,8 +419,8 @@ dotenv.config()
       LogHelper.info('Main NLP model state')
 
       if (
-        !fs.existsSync(mainNlpModelPath) ||
-        !Object.keys(await fs.promises.readFile(mainNlpModelPath)).length
+        !fs.existsSync(MAIN_NLP_MODEL_PATH) ||
+        !Object.keys(await fs.promises.readFile(MAIN_NLP_MODEL_PATH)).length
       ) {
         const state = 'Main NLP model not found or broken'
 
@@ -564,7 +565,7 @@ dotenv.config()
         report.can_run.v &&
         report.can_run_skill.v &&
         report.can_text.v &&
-        report.can_start_tcp_server.v
+        report.can_start_python_tcp_server.v
       ) {
         LogHelper.success('Hooray! Leon can run correctly')
         LogHelper.info(

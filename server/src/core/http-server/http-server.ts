@@ -4,20 +4,25 @@ import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
 
 import {
+  API_VERSION,
   LEON_VERSION,
   LEON_NODE_ENV,
   HAS_OVER_HTTP,
-  IS_TELEMETRY_ENABLED
+  IS_TELEMETRY_ENABLED,
+  LLM_PROVIDER
 } from '@/constants'
 import { LogHelper } from '@/helpers/log-helper'
 import { DateHelper } from '@/helpers/date-helper'
 import { corsMidd } from '@/core/http-server/plugins/cors'
 import { otherMidd } from '@/core/http-server/plugins/other'
 import { infoPlugin } from '@/core/http-server/api/info'
+import { llmInferencePlugin } from '@/core/http-server/api/llm-inference'
+import { runActionPlugin } from '@/core/http-server/api/run-action'
+import { fetchWidgetPlugin } from '@/core/http-server/api/fetch-widget'
 import { keyMidd } from '@/core/http-server/plugins/key'
 import { utterancePlugin } from '@/core/http-server/api/utterance'
-
-const API_VERSION = 'v1'
+import { LLM_MANAGER, PERSONA } from '@/core'
+import { SystemHelper } from '@/helpers/system-helper'
 
 export interface APIOptions {
   apiVersion: string
@@ -53,13 +58,29 @@ export default class HTTPServer {
     this.fastify.addHook('preValidation', otherMidd)
 
     LogHelper.title('Initialization')
-    LogHelper.info(`The current env is ${LEON_NODE_ENV}`)
-    LogHelper.info(`The current version is ${LEON_VERSION}`)
+    LogHelper.info(`Environment: ${LEON_NODE_ENV}`)
+    LogHelper.info(`Version: ${LEON_VERSION}`)
+    LogHelper.info(`Time zone: ${DateHelper.getTimeZone()}`)
+    LogHelper.info(`LLM provider: ${LLM_PROVIDER}`)
+    LogHelper.info(`Mood: ${PERSONA.mood.type}`)
+    LogHelper.info(`GPU: ${(await SystemHelper.getGPUDeviceNames())[0]}`)
+    LogHelper.info(
+      `Graphics compute API: ${await SystemHelper.getGraphicsComputeAPI()}`
+    )
+    LogHelper.info(`Total VRAM: ${await SystemHelper.getTotalVRAM()} GB`)
 
-    LogHelper.info(`The current time zone is ${DateHelper.getTimeZone()}`)
+    const isLLMEnabled = LLM_MANAGER.isLLMEnabled ? 'enabled' : 'disabled'
+    LogHelper.info(`LLM: ${isLLMEnabled}`)
+
+    const isLLMNLGEnabled = LLM_MANAGER.isLLMNLGEnabled ? 'enabled' : 'disabled'
+    LogHelper.info(`LLM NLG: ${isLLMNLGEnabled}`)
+
+    const isLLMActionRecognitionEnabled =
+      LLM_MANAGER.isLLMActionRecognitionEnabled ? 'enabled' : 'disabled'
+    LogHelper.info(`LLM action recognition: ${isLLMActionRecognitionEnabled}`)
 
     const isTelemetryEnabled = IS_TELEMETRY_ENABLED ? 'enabled' : 'disabled'
-    LogHelper.info(`Telemetry ${isTelemetryEnabled}`)
+    LogHelper.info(`Telemetry: ${isTelemetryEnabled}`)
 
     await this.bootstrap()
   }
@@ -77,7 +98,10 @@ export default class HTTPServer {
       reply.sendFile('index.html')
     })
 
+    this.fastify.register(runActionPlugin, { apiVersion: API_VERSION })
+    this.fastify.register(fetchWidgetPlugin, { apiVersion: API_VERSION })
     this.fastify.register(infoPlugin, { apiVersion: API_VERSION })
+    this.fastify.register(llmInferencePlugin, { apiVersion: API_VERSION })
 
     if (HAS_OVER_HTTP) {
       this.fastify.register((instance, _opts, next) => {
