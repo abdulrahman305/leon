@@ -82,7 +82,7 @@
     "@nlpjs/lang-all": "4.22.12",
     "@nlpjs/nlp": "4.22.17",
     "@segment/ajv-human-errors": "2.11.3",
-    "@sinclair/typebox": "0.31.23",
+    "@sinclair/typebox": "0.32.13",
     "ajv": "8.12.0",
     "ajv-formats": "2.1.1",
     "archiver": "6.0.1",
