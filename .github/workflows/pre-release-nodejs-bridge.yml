@@ -62,7 +62,7 @@ jobs:
           echo "NODEJS_BRIDGE_VERSION=$(node --require fs --eval "const fs = require('node:fs'); const [, VERSION] = fs.readFileSync('version.ts', 'utf8').split(\"'\"); console.log(VERSION)")" >> $GITHUB_ENV
 
       - name: Download Node.js bridge
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           path: bridges/nodejs/dist
 
